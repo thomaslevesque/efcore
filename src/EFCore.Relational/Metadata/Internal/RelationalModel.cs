@@ -2,10 +2,12 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Microsoft.EntityFrameworkCore.Metadata.Internal
@@ -16,7 +18,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
     ///     any release. You should only use it directly in your code with extreme caution and knowing that
     ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
-    public class RelationalModel
+    public class RelationalModel : Annotatable, IRelationalModel
     {
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -24,10 +26,55 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         ///     any release. You should only use it directly in your code with extreme caution and knowing that
         ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public static IModel AddRelationalModel([NotNull] IConventionModel model)
+        public RelationalModel([NotNull] IModel model)
         {
-            var tables = new SortedDictionary<(string, string), Table>();
-            var views = new SortedDictionary<(string, string), View>();
+            Model = model;
+        }
+
+        /// <inheritdoc/>
+        public virtual IModel Model { get; }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual SortedDictionary<(string, string), Table> Tables { get; } = new SortedDictionary<(string, string), Table>();
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual SortedDictionary<(string, string), View> Views { get; } = new SortedDictionary<(string, string), View>();
+
+        /// <inheritdoc/>
+        public virtual ITable FindTable(string name, string schema)
+            => Tables.TryGetValue((name, schema), out var table)
+                ? table
+                : null;
+
+        /// <inheritdoc/>
+        public virtual IView FindView(string name, string schema)
+            => Views.TryGetValue((name, schema), out var view)
+                ? view
+                : null;
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public static IModel Add(
+            [NotNull] IConventionModel model, [NotNull] IRelationalAnnotationProvider relationalAnnotationProvider)
+        {
+            var databaseModel = new RelationalModel(model);
+            databaseModel.AddAnnotations(relationalAnnotationProvider.For(databaseModel));
+            model.SetAnnotation(RelationalAnnotationNames.RelationalModel, databaseModel);
+
             foreach (var entityType in model.GetEntityTypes())
             {
                 var tableName = entityType.GetTableName();
@@ -35,10 +82,10 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 if (tableName != null)
                 {
                     var schema = entityType.GetSchema();
-                    if (!tables.TryGetValue((tableName, schema), out var table))
+                    if (!databaseModel.Tables.TryGetValue((tableName, schema), out var table))
                     {
-                        table = new Table(tableName, schema);
-                        tables.Add((tableName, schema), table);
+                        table = new Table(tableName, schema, databaseModel);
+                        databaseModel.Tables.Add((tableName, schema), table);
                     }
 
                     table.IsMigratable = table.IsMigratable
@@ -68,7 +115,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                         var columnMappings = property[RelationalAnnotationNames.TableColumnMappings] as SortedSet<ColumnMapping>;
                         if (columnMappings == null)
                         {
-                            columnMappings = new SortedSet<ColumnMapping>(ColumnMappingComparer.Instance);
+                            columnMappings = new SortedSet<ColumnMapping>(ColumnMappingBaseComparer.Instance);
                             property.SetAnnotation(RelationalAnnotationNames.TableColumnMappings, columnMappings);
                         }
 
@@ -78,7 +125,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                     var tableMappings = entityType[RelationalAnnotationNames.TableMappings] as SortedSet<TableMapping>;
                     if (tableMappings == null)
                     {
-                        tableMappings = new SortedSet<TableMapping>(TableMappingComparer.Instance);
+                        tableMappings = new SortedSet<TableMapping>(TableMappingBaseComparer.Instance);
                         entityType.SetAnnotation(RelationalAnnotationNames.TableMappings, tableMappings);
                     }
 
@@ -89,10 +136,10 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 if (viewName != null)
                 {
                     var schema = entityType.GetViewSchema();
-                    if (!views.TryGetValue((viewName, schema), out var view))
+                    if (!databaseModel.Views.TryGetValue((viewName, schema), out var view))
                     {
-                        view = new View(viewName, schema);
-                        views.Add((viewName, schema), view);
+                        view = new View(viewName, schema, databaseModel);
+                        databaseModel.Views.Add((viewName, schema), view);
                     }
 
                     var viewMapping = new ViewMapping(entityType, view, includesDerivedTypes: true);
@@ -119,7 +166,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                         var columnMappings = property[RelationalAnnotationNames.ViewColumnMappings] as SortedSet<ViewColumnMapping>;
                         if (columnMappings == null)
                         {
-                            columnMappings = new SortedSet<ViewColumnMapping>(ViewColumnMappingComparer.Instance);
+                            columnMappings = new SortedSet<ViewColumnMapping>(ColumnMappingBaseComparer.Instance);
                             property.SetAnnotation(RelationalAnnotationNames.ViewColumnMappings, columnMappings);
                         }
 
@@ -129,7 +176,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                     var tableMappings = entityType[RelationalAnnotationNames.ViewMappings] as SortedSet<ViewMapping>;
                     if (tableMappings == null)
                     {
-                        tableMappings = new SortedSet<ViewMapping>(ViewMappingComparer.Instance);
+                        tableMappings = new SortedSet<ViewMapping>(TableMappingBaseComparer.Instance);
                         entityType.SetAnnotation(RelationalAnnotationNames.ViewMappings, tableMappings);
                     }
 
@@ -138,31 +185,38 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 }
             }
 
-            if (tables.Any())
+            foreach (var table in databaseModel.Tables.Values)
             {
-                foreach (var table in tables.Values)
+                table.AddAnnotations(relationalAnnotationProvider.For(table));
+                foreach (var column in table.Columns.Values)
                 {
-                    PopulateConstraints(table);
-                    PopulateInternalForeignKeys(table);
+                    column.AddAnnotations(relationalAnnotationProvider.For(column));
                 }
 
-                model.SetAnnotation(RelationalAnnotationNames.Tables, tables);
+                PopulateInternalForeignKeys(table);
+                PopulateConstraints(table, relationalAnnotationProvider);
             }
 
-            if (views.Any())
+            foreach (var view in databaseModel.Views.Values)
             {
-                foreach (var view in views.Values)
+                view.AddAnnotations(relationalAnnotationProvider.For(view));
+                foreach (var viewColumn in view.Columns.Values)
                 {
-                    PopulateInternalForeignKeys(view);
+                    viewColumn.AddAnnotations(relationalAnnotationProvider.For(viewColumn));
                 }
 
-                model.SetAnnotation(RelationalAnnotationNames.Views, views);
+                PopulateInternalForeignKeys(view);
+            }
+
+            foreach (Sequence sequence in ((IRelationalModel)databaseModel).Sequences)
+            {
+                sequence.AddAnnotations(relationalAnnotationProvider.For(sequence));
             }
 
             return model;
         }
 
-        private static void PopulateConstraints(Table table)
+        private static void PopulateConstraints(Table table, IRelationalAnnotationProvider relationalAnnotationProvider)
         {
             foreach (var entityTypeMapping in ((ITable)table).EntityTypeMappings)
             {
@@ -268,7 +322,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                     }
 
                     foreignKeyConstraints.Add(constraint);
-
                     table.ForeignKeyConstraints.Add(name, constraint);
                 }
 
@@ -361,6 +414,26 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                     tableIndexes.Add(tableIndex);
                     tableIndex.MappedIndexes.Add(index);
                 }
+
+                foreach (var constraint in table.UniqueConstraints.Values)
+                {
+                    constraint.AddAnnotations(relationalAnnotationProvider.For(constraint));
+                }
+
+                foreach (var index in table.Indexes.Values)
+                {
+                    index.AddAnnotations(relationalAnnotationProvider.For(index));
+                }
+
+                foreach (var constraint in table.ForeignKeyConstraints.Values)
+                {
+                    constraint.AddAnnotations(relationalAnnotationProvider.For(constraint));
+                }
+
+                foreach (CheckConstraint checkConstraint in ((ITable)table).CheckConstraints)
+                {
+                    checkConstraint.AddAnnotations(relationalAnnotationProvider.For(checkConstraint));
+                }
             }
         }
 
@@ -442,14 +515,37 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                     return ReferentialAction.Cascade;
                 case DeleteBehavior.NoAction:
                 case DeleteBehavior.ClientNoAction:
-                case DeleteBehavior.ClientSetNull:
-                case DeleteBehavior.ClientCascade:
                     return ReferentialAction.NoAction;
                 case DeleteBehavior.Restrict:
+                case DeleteBehavior.ClientSetNull:
+                case DeleteBehavior.ClientCascade:
                     return ReferentialAction.Restrict;
                 default:
                     throw new NotImplementedException(deleteBehavior.ToString());
             }
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual DebugView DebugView
+            => new DebugView(
+                () => this.ToDebugString(MetadataDebugStringOptions.ShortDefault),
+                () => this.ToDebugString(MetadataDebugStringOptions.LongDefault));
+
+        IEnumerable<ITable> IRelationalModel.Tables
+        {
+            [DebuggerStepThrough]
+            get => Tables.Values;
+        }
+
+        IEnumerable<IView> IRelationalModel.Views
+        {
+            [DebuggerStepThrough]
+            get => Views.Values;
         }
     }
 }

@@ -8,11 +8,9 @@ using System.Text;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
+namespace Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal
 {
     /// <summary>
     ///     <para>
@@ -27,13 +25,13 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
     ///         This service cannot depend on services registered as <see cref="ServiceLifetime.Scoped" />.
     ///     </para>
     /// </summary>
-    public class SqlServerMigrationsAnnotationProvider : MigrationsAnnotationProvider
+    public class SqlServerAnnotationProvider : RelationalAnnotationProvider
     {
         /// <summary>
         ///     Initializes a new instance of this class.
         /// </summary>
         /// <param name="dependencies"> Parameter object containing dependencies for this service. </param>
-        public SqlServerMigrationsAnnotationProvider([NotNull] MigrationsAnnotationProviderDependencies dependencies)
+        public SqlServerAnnotationProvider([NotNull] RelationalAnnotationProviderDependencies dependencies)
             : base(dependencies)
         {
         }
@@ -44,11 +42,11 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
         ///     any release. You should only use it directly in your code with extreme caution and knowing that
         ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public override IEnumerable<IAnnotation> For(IModel model)
+        public override IEnumerable<IAnnotation> For(IRelationalModel model)
         {
-            var maxSize = model.GetDatabaseMaxSize();
-            var serviceTier = model.GetServiceTierSql();
-            var performanceLevel = model.GetPerformanceLevelSql();
+            var maxSize = model.Model.GetDatabaseMaxSize();
+            var serviceTier = model.Model.GetServiceTierSql();
+            var performanceLevel = model.Model.GetPerformanceLevelSql();
             if (maxSize != null
                 || serviceTier != null
                 || performanceLevel != null)
@@ -81,9 +79,11 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
                 yield return new Annotation(SqlServerAnnotationNames.EditionOptions, options.ToString());
             }
 
-            foreach (var annotationForRemove in ForRemove(model))
+            if (model.Tables.Any(t => t.IsMigratable && t.EntityTypeMappings.Any(m => m.EntityType.IsMemoryOptimized())))
             {
-                yield return annotationForRemove;
+                yield return new Annotation(
+                    SqlServerAnnotationNames.MemoryOptimized,
+                    true);
             }
         }
 
@@ -93,7 +93,16 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
         ///     any release. You should only use it directly in your code with extreme caution and knowing that
         ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public override IEnumerable<IAnnotation> For(IEntityType entityType) => ForRemove(entityType);
+        public override IEnumerable<IAnnotation> For(ITable table)
+        {
+            // Model validation ensures that these facets are the same on all mapped entity types
+            if (table.EntityTypeMappings.First().EntityType.IsMemoryOptimized())
+            {
+                yield return new Annotation(
+                    SqlServerAnnotationNames.MemoryOptimized,
+                    true);
+            }
+        }
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -101,8 +110,11 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
         ///     any release. You should only use it directly in your code with extreme caution and knowing that
         ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public override IEnumerable<IAnnotation> For(IKey key)
+        public override IEnumerable<IAnnotation> For(IUniqueConstraint constraint)
         {
+            // Model validation ensures that these facets are the same on all mapped keys
+            var key = constraint.MappedKeys.First();
+
             var isClustered = key.IsClustered();
             if (isClustered.HasValue)
             {
@@ -118,9 +130,12 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
         ///     any release. You should only use it directly in your code with extreme caution and knowing that
         ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public override IEnumerable<IAnnotation> For(IIndex index)
+        public override IEnumerable<IAnnotation> For(ITableIndex index)
         {
-            var isClustered = index.IsClustered();
+            // Model validation ensures that these facets are the same on all mapped indexes
+            var modelIndex = index.MappedIndexes.First();
+
+            var isClustered = modelIndex.IsClustered();
             if (isClustered.HasValue)
             {
                 yield return new Annotation(
@@ -128,11 +143,11 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
                     isClustered.Value);
             }
 
-            var includeProperties = index.GetIncludeProperties();
+            var includeProperties = modelIndex.GetIncludeProperties();
             if (includeProperties != null)
             {
                 var includeColumns = (IReadOnlyList<string>)includeProperties
-                    .Select(p => index.DeclaringEntityType.FindProperty(p).GetColumnName())
+                    .Select(p => modelIndex.DeclaringEntityType.FindProperty(p).GetColumnName())
                     .ToArray();
 
                 yield return new Annotation(
@@ -140,7 +155,7 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
                     includeColumns);
             }
 
-            var isOnline = index.IsCreatedOnline();
+            var isOnline = modelIndex.IsCreatedOnline();
             if (isOnline.HasValue)
             {
                 yield return new Annotation(
@@ -155,9 +170,11 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
         ///     any release. You should only use it directly in your code with extreme caution and knowing that
         ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public override IEnumerable<IAnnotation> For(IProperty property)
+        public override IEnumerable<IAnnotation> For(IColumn column)
         {
-            if (property.GetValueGenerationStrategy() == SqlServerValueGenerationStrategy.IdentityColumn)
+            var property = column.PropertyMappings.Select(m => m.Property)
+                .FirstOrDefault(p => p.GetValueGenerationStrategy() == SqlServerValueGenerationStrategy.IdentityColumn);
+            if (property != null)
             {
                 var seed = property.GetIdentitySeed();
                 var increment = property.GetIdentityIncrement();
@@ -167,40 +184,5 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
                     string.Format(CultureInfo.InvariantCulture, "{0}, {1}", seed ?? 1, increment ?? 1));
             }
         }
-
-        /// <summary>
-        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
-        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
-        ///     any release. You should only use it directly in your code with extreme caution and knowing that
-        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
-        /// </summary>
-        public override IEnumerable<IAnnotation> ForRemove(IModel model)
-        {
-            if (model.GetEntityTypes().Any(e => e.BaseType == null && e.IsMemoryOptimized()))
-            {
-                yield return new Annotation(
-                    SqlServerAnnotationNames.MemoryOptimized,
-                    true);
-            }
-        }
-
-        /// <summary>
-        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
-        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
-        ///     any release. You should only use it directly in your code with extreme caution and knowing that
-        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
-        /// </summary>
-        public override IEnumerable<IAnnotation> ForRemove(IEntityType entityType)
-        {
-            if (IsMemoryOptimized(entityType))
-            {
-                yield return new Annotation(
-                    SqlServerAnnotationNames.MemoryOptimized,
-                    true);
-            }
-        }
-
-        private static bool IsMemoryOptimized(IEntityType entityType)
-            => entityType.GetAllBaseTypesInclusive().Any(t => t.IsMemoryOptimized());
     }
 }

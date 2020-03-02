@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Linq;
-using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.TestUtilities;
 using Xunit;
@@ -12,12 +12,12 @@ namespace Microsoft.EntityFrameworkCore.SqlServer.Migrations.Internal
     public class SqlServerMigrationsAnnotationProviderTest
     {
         private readonly ModelBuilder _modelBuilder;
-        private readonly SqlServerMigrationsAnnotationProvider _annotations;
+        private readonly SqlServerAnnotationProvider _annotations;
 
         public SqlServerMigrationsAnnotationProviderTest()
         {
             _modelBuilder = SqlServerTestHelpers.Instance.CreateConventionBuilder( /*skipValidation: true*/);
-            _annotations = new SqlServerMigrationsAnnotationProvider(new MigrationsAnnotationProviderDependencies());
+            _annotations = new SqlServerAnnotationProvider(new RelationalAnnotationProviderDependencies());
         }
 
         [Fact]

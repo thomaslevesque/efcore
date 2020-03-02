@@ -40,6 +40,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         IEnumerable<IUniqueConstraint> UniqueConstraints { get; }
 
         /// <summary>
+        ///     Gets the primary key for this table.
+        /// </summary>
+        IUniqueConstraint PrimaryKey => UniqueConstraints.FirstOrDefault(c => c.IsPrimaryKey);
+
+        /// <summary>
         ///     Gets the indexes for this table.
         /// </summary>
         IEnumerable<ITableIndex> Indexes { get; }

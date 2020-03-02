@@ -4,11 +4,11 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Microsoft.EntityFrameworkCore.Migrations
+namespace Microsoft.EntityFrameworkCore.Metadata
 {
     /// <summary>
     ///     <para>
-    ///         Service dependencies parameter class for <see cref="MigrationsAnnotationProvider" />
+    ///         Service dependencies parameter class for <see cref="RelationalAnnotationProvider" />
     ///     </para>
     ///     <para>
     ///         This type is typically used by database providers (and other extensions). It is generally
@@ -36,11 +36,11 @@ namespace Microsoft.EntityFrameworkCore.Migrations
     ///     </para>
     /// </summary>
     [EntityFrameworkInternal]
-    public sealed class MigrationsAnnotationProviderDependencies
+    public sealed class RelationalAnnotationProviderDependencies
     {
         /// <summary>
         ///     <para>
-        ///         Creates the service dependencies parameter object for a <see cref="MigrationsAnnotationProvider" />.
+        ///         Creates the service dependencies parameter object for a <see cref="RelationalAnnotationProvider" />.
         ///     </para>
         ///     <para>
         ///         Do not call this constructor directly from either provider or application code as it may change
@@ -64,7 +64,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations
         ///     </para>
         /// </summary>
         [EntityFrameworkInternal]
-        public MigrationsAnnotationProviderDependencies()
+        public RelationalAnnotationProviderDependencies()
         {
         }
     }

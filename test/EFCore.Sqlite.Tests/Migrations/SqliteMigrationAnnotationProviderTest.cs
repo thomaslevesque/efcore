@@ -2,8 +2,8 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Sqlite.Metadata.Internal;
-using Microsoft.EntityFrameworkCore.Sqlite.Migrations.Internal;
 using Microsoft.EntityFrameworkCore.TestUtilities;
 using Xunit;
 
@@ -12,7 +12,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations
     public class SqliteMigrationAnnotationProviderTest
     {
         private readonly ModelBuilder _modelBuilder;
-        private readonly SqliteMigrationsAnnotationProvider _provider;
+        private readonly SqliteAnnotationProvider _provider;
 
         private readonly Annotation _autoincrement = new Annotation(SqliteAnnotationNames.Autoincrement, true);
 
@@ -20,7 +20,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations
         {
             _modelBuilder = SqliteTestHelpers.Instance.CreateConventionBuilder();
 
-            _provider = new SqliteMigrationsAnnotationProvider(new MigrationsAnnotationProviderDependencies());
+            _provider = new SqliteAnnotationProvider(new RelationalAnnotationProviderDependencies());
         }
 
         [ConditionalFact]
