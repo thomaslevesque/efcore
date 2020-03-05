@@ -84,6 +84,8 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
         {
             private EntityReference _entityReference;
 
+            public virtual LambdaExpression FilterExpression { get; set; }
+
             public IncludeTreeNode(IEntityType entityType, EntityReference entityReference)
             {
                 EntityType = entityType;
@@ -92,11 +94,24 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
 
             public virtual IEntityType EntityType { get; private set; }
 
-            public virtual IncludeTreeNode AddNavigation(INavigation navigation)
+            public virtual IncludeTreeNode AddNavigation(INavigation navigation, LambdaExpression filterExpression)
             {
                 if (TryGetValue(navigation, out var existingValue))
                 {
-                    return existingValue;
+                    if (filterExpression == null)
+                    {
+                        return existingValue;
+                    }
+
+                    if (existingValue.FilterExpression != null
+                        && filterExpression != null)
+                    {
+                        throw new NotSupportedException("Multiple filtered include calls on same navigation are not supported.");
+                    }
+
+                    // if stored entry doesn't have filter expression, but the new one does
+                    // remove the old one, so the new one can be added in its place
+                    Remove(navigation);
                 }
 
                 if (_entityReference != null
@@ -110,10 +125,12 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                     };
 
                     this[navigation] = entityReference.IncludePaths;
+                    this[navigation].FilterExpression = filterExpression;
                 }
                 else
                 {
                     this[navigation] = new IncludeTreeNode(navigation.TargetEntityType, null);
+                    this[navigation].FilterExpression = filterExpression;
                 }
 
                 return this[navigation];

@@ -151,6 +151,7 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                     return expansion;
                 }
 
+                var filterExpression = default(LambdaExpression);
                 var targetType = navigation.TargetEntityType;
                 if (targetType.HasDefiningNavigation()
                     || targetType.IsOwned())
@@ -159,16 +160,21 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                     ownedEntityReference.MarkAsOptional();
                     if (entityReference.IncludePaths.ContainsKey(navigation))
                     {
-                        ownedEntityReference.SetIncludePaths(entityReference.IncludePaths[navigation]);
+                        var innerIncludeTreeNode = entityReference.IncludePaths[navigation];
+                        filterExpression = innerIncludeTreeNode.FilterExpression;
+                        ownedEntityReference.SetIncludePaths(innerIncludeTreeNode);
                     }
 
                     var ownedExpansion = new OwnedNavigationReference(root, navigation, ownedEntityReference);
                     if (navigation.IsCollection)
                     {
                         var elementType = ownedExpansion.Type.TryGetSequenceType();
-                        var subquery = Expression.Call(
-                            QueryableMethods.AsQueryable.MakeGenericMethod(elementType),
-                            ownedExpansion);
+
+                        var subquery = filterExpression != null
+                            ? ReplacingExpressionVisitor.Replace(filterExpression.Parameters[0], ownedExpansion, filterExpression.Body)
+                            : Expression.Call(
+                                QueryableMethods.AsQueryable.MakeGenericMethod(elementType),
+                                ownedExpansion);
 
                         return new MaterializeCollectionNavigationExpression(subquery, navigation);
                     }
@@ -179,9 +185,11 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
 
                 var innerQueryable = new QueryRootExpression(targetType);
                 var innerSource = (NavigationExpansionExpression)_navigationExpandingExpressionVisitor.Visit(innerQueryable);
+
                 if (entityReference.IncludePaths.ContainsKey(navigation))
                 {
                     var innerIncludeTreeNode = entityReference.IncludePaths[navigation];
+                    filterExpression = innerIncludeTreeNode.FilterExpression;
                     var innerEntityReference = (EntityReference)((NavigationTreeExpression)innerSource.PendingSelector).Value;
                     innerEntityReference.SetIncludePaths(innerIncludeTreeNode);
                 }
@@ -248,12 +256,17 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                             Expression.Equal(outerKey, innerKey))
                         : Expression.Equal(outerKey, innerKey);
 
-                    var subquery = Expression.Call(
+                    var subquery = (Expression)Expression.Call(
                         QueryableMethods.Where.MakeGenericMethod(innerSourceSequenceType),
                         innerSource,
                         Expression.Quote(
                             Expression.Lambda(
                                 predicateBody, innerParameter)));
+
+                    if (filterExpression != null)
+                    {
+                        subquery = ReplacingExpressionVisitor.Replace(filterExpression.Parameters[0], subquery, filterExpression.Body);
+                    }
 
                     return new MaterializeCollectionNavigationExpression(subquery, navigation);
                 }
