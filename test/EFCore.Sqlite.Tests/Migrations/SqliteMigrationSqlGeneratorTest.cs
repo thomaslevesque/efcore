@@ -71,6 +71,18 @@ namespace Microsoft.EntityFrameworkCore.Migrations
 ");
         }
 
+        [ConditionalFact]
+        public override void DefaultValueSql_with_line_breaks()
+        {
+            base.DefaultValueSql_with_line_breaks();
+
+            AssertSql(
+                @"CREATE TABLE ""TestLineBreaks"" (
+    ""TestDefaultValueSql"" TEXT NOT NULL DEFAULT (CONCAT(CHAR(13), CHAR(10), 'Various Line', CHAR(13), 'Breaks', CHAR(10)))
+);
+");
+        }
+
         [ConditionalTheory]
         [InlineData(true, null)]
         [InlineData(false, "PK_Id")]

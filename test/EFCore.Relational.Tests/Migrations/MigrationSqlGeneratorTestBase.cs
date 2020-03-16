@@ -138,6 +138,26 @@ namespace Microsoft.EntityFrameworkCore.Migrations
             => Generate(
                 new SqlOperation { Sql = "-- I <3 DDL" });
 
+        public virtual void DefaultValueSql_with_line_breaks()
+        {
+            Generate(
+                new CreateTableOperation
+                {
+                    Name = "TestLineBreaks",
+                    Schema = "dbo",
+                    Columns =
+                    {
+                        new AddColumnOperation
+                        {
+                            Name = "TestDefaultValueSql",
+                            Table = "Test",
+                            ClrType = typeof(string),
+                            DefaultValueSql = "\r\nVarious Line\rBreaks\n"
+                        }
+                    }
+                });
+        }
+
         protected TestHelpers TestHelpers { get; }
 
         protected MigrationSqlGeneratorTestBase(TestHelpers testHelpers)

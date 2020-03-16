@@ -1239,7 +1239,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations
             {
                 builder
                     .Append(" DEFAULT (")
-                    .Append(defaultValueSql)
+                    .Append(EscapeLineBreaks(defaultValueSql))
                     .Append(")");
             }
             else if (defaultValue != null)
@@ -1675,6 +1675,22 @@ namespace Microsoft.EntityFrameworkCore.Migrations
             version = versionString;
 
             return true;
+        }
+
+        private static readonly char[] LineBreakChars = new char[] { '\r', '\n' };
+        private static string EscapeLineBreaks(string value)
+        {
+            if (value == null
+                || value.IndexOfAny(LineBreakChars) == -1)
+            {
+                return value;
+            }
+
+            return ("CONCAT('" + value
+                .Replace("\r", "', CHAR(13), '")
+                .Replace("\n", "', CHAR(10), '") + "')")
+                .Replace("'', ", string.Empty)
+                .Replace(", ''", string.Empty);
         }
     }
 }

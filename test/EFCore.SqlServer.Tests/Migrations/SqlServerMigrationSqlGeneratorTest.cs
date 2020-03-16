@@ -545,6 +545,17 @@ GO
 ");
         }
 
+        [ConditionalFact]
+        public override void DefaultValueSql_with_line_breaks()
+        {
+            base.DefaultValueSql_with_line_breaks();
+
+            AssertSql(@"CREATE TABLE [dbo].[TestLineBreaks] (
+    [TestDefaultValueSql] nvarchar(max) NOT NULL DEFAULT (CONCAT(CHAR(13), CHAR(10), 'Various Line', CHAR(13), 'Breaks', CHAR(10)))
+);
+");
+        }
+
         public SqlServerMigrationSqlGeneratorTest()
             : base(SqlServerTestHelpers.Instance)
         {
